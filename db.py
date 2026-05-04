@@ -1,14 +1,14 @@
 from sqlalchemy import create_engine, text
 from contextlib import contextmanager
-
-DB_URL = "postgresql://postgres.wqqalipwyntzygedmpdb:recensireifimmi@aws-1-eu-central-1.pooler.supabase.com:5432/postgres?sslmode=require"
+import streamlit as st
 
 _engine = None
 
 def get_engine():
     global _engine
     if _engine is None:
-        _engine = create_engine(DB_URL, pool_pre_ping=True)
+        db_url = st.secrets["DB_URL"]
+        _engine = create_engine(db_url, pool_pre_ping=True)
     return _engine
 
 @contextmanager
