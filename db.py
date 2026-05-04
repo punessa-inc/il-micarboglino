@@ -1,7 +1,7 @@
 from sqlalchemy import create_engine, text
 from contextlib import contextmanager
 
-DB_URL = "postgresql://postgres:recensireifimmi@db.wqqalipwyntzygedmpdb.supabase.co:5432/postgres?sslmode=require"
+DB_URL = "postgresql://postgres.wqqalipwyntzygedmpdb:recensireifimmi@aws-1-eu-central-1.pooler.supabase.com:5432/postgres?sslmode=require"
 
 _engine = None
 
