@@ -140,12 +140,7 @@ with tab3:
                 voto_str = f"{voto:.1f}" if pd.notna(voto) else "—"
                 conflict_str = f" ⚡" if pd.notna(conflict) and conflict > 1 else ""
                 col_v = score_color(voto)
-                _raw_note = film.get("note")
-                note_txt = str(_raw_note).strip() if pd.notna(_raw_note) and _raw_note else ""
                 note_html = ""
-                if note_txt and note_txt not in ("None", "nan", "NaN"):
-                    note_short = note_txt[:80] + ("..." if len(note_txt) > 80 else "")
-                    note_html = f'<div style="font-size:0.6rem;color:#888;font-style:italic;margin-top:0.3rem;line-height:1.3">{note_short}</div>'
                 titolo_short = (film["titolo"] or "")[:28]
 
                 if poster_url:
