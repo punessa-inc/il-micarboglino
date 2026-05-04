@@ -1,16 +1,16 @@
 import streamlit as st
 import pandas as pd
 import datetime
+from sqlalchemy import text
 
-from db import init_db, get_conn, backup_db
+from db import init_db, get_conn, get_engine, backup_db
 from utils import parse_excel_like_yours, normalize_canonical_csv
 
-st.set_page_config(page_title="Micarboglino (locale)", layout="wide")
+st.set_page_config(page_title="il Micarboglino", layout="wide")
 init_db()
 
-# backup automatico (una volta per sessione)
 if "backup_done" not in st.session_state:
-    _path = backup_db()
+    backup_db()
     st.session_state["backup_done"] = True
 
 st.title("🎬 il Micarboglino")
@@ -20,9 +20,6 @@ tab3, tab2, tab4, tab1 = st.tabs(["Classifiche", "Inserisci film", "Gestisci", "
 
 
 def insert_df(df: pd.DataFrame):
-    """
-    Inserisce nel DB evitando duplicati su (titolo, anno).
-    """
     cols = {
         "FILM_RAW": "film_raw",
         "TITOLO": "titolo",
@@ -52,39 +49,32 @@ def insert_df(df: pd.DataFrame):
 
     df2 = df[list(cols.keys())].rename(columns=cols)
 
-    # --- anti-duplicati: titolo+anno ---
-    with get_conn() as conn:
-        existing = pd.read_sql_query("SELECT titolo, anno FROM films", conn)
+    engine = get_engine()
+    existing = pd.read_sql_query("SELECT titolo, anno FROM films", engine)
 
-        existing_titles = existing["titolo"].fillna("").astype(str).str.strip().str.lower()
-        existing_years = existing["anno"].fillna(-1).astype(int)
-        existing_keys = set(zip(existing_titles.tolist(), existing_years.tolist()))
+    existing_titles = existing["titolo"].fillna("").astype(str).str.strip().str.lower()
+    existing_years = existing["anno"].fillna(-1).astype(int)
+    existing_keys = set(zip(existing_titles.tolist(), existing_years.tolist()))
 
-        new_titles = df2["titolo"].fillna("").astype(str).str.strip().str.lower()
-        new_years = df2["anno"].fillna(-1).astype(int)
+    new_titles = df2["titolo"].fillna("").astype(str).str.strip().str.lower()
+    new_years = df2["anno"].fillna(-1).astype(int)
 
-        mask_new = []
-        for t, y in zip(new_titles.tolist(), new_years.tolist()):
-            mask_new.append((t, y) not in existing_keys)
+    mask_new = []
+    for t, y in zip(new_titles.tolist(), new_years.tolist()):
+        mask_new.append((t, y) not in existing_keys)
 
-        df_new = df2[pd.Series(mask_new, index=df2.index)]
+    df_new = df2[pd.Series(mask_new, index=df2.index)]
 
-        if len(df_new) > 0:
-            df_new.to_sql("films", conn, if_exists="append", index=False)
+    if len(df_new) > 0:
+        df_new.to_sql("films", engine, if_exists="append", index=False)
 
 
 def load_all():
-    with get_conn() as conn:
-        return pd.read_sql_query("SELECT * FROM films", conn)
+    engine = get_engine()
+    return pd.read_sql_query("SELECT * FROM films", engine)
 
 
-def compute_scores(
-    regia_a, regia_f,
-    foto_a, foto_f,
-    scen_a, scen_f,
-    rec_a, rec_f,
-    glob_a, glob_f
-):
+def compute_scores(regia_a, regia_f, foto_a, foto_f, scen_a, scen_f, rec_a, rec_f, glob_a, glob_f):
     media_a = (regia_a + foto_a + scen_a + rec_a + glob_a) / 5
     media_f = (regia_f + foto_f + scen_f + rec_f + glob_f) / 5
     voto_finale = (media_a + media_f) / 2
@@ -158,11 +148,7 @@ with tab2:
     glob_a,  glob_f  = v("Globale", "new_glob")
 
     media_a, media_f, voto_finale, indice_conflitto = compute_scores(
-        regia_a, regia_f,
-        foto_a, foto_f,
-        scen_a, scen_f,
-        rec_a, rec_f,
-        glob_a, glob_f
+        regia_a, regia_f, foto_a, foto_f, scen_a, scen_f, rec_a, rec_f, glob_a, glob_f
     )
 
     st.info(
@@ -182,13 +168,11 @@ with tab2:
                 "PAESE": None,
                 "ANNO": int(anno) if anno else None,
                 "NOTE": note if note else None,
-
                 "REGIA_ANNIKA": regia_a, "REGIA_FRANCESCO": regia_f,
                 "FOTOGRAFIA_ANNIKA": foto_a, "FOTOGRAFIA_FRANCESCO": foto_f,
                 "SCENEGGIATURA_ANNIKA": scen_a, "SCENEGGIATURA_FRANCESCO": scen_f,
                 "RECITAZIONE_ANNIKA": rec_a, "RECITAZIONE_FRANCESCO": rec_f,
                 "GLOBALE_ANNIKA": glob_a, "GLOBALE_FRANCESCO": glob_f,
-
                 "MEDIA_ANNIKA": media_a,
                 "MEDIA_FRANCESCO": media_f,
                 "VOTO FINALE": voto_finale,
@@ -199,7 +183,7 @@ with tab2:
             st.rerun()
 
 
-# ---------------- TAB 3: CLASSIFICHE (RICERCA ROBUSTA) ----------------
+# ---------------- TAB 3: CLASSIFICHE ----------------
 with tab3:
     st.subheader("Classifiche")
 
@@ -214,7 +198,6 @@ with tab3:
     if df.empty:
         st.warning("Nessun film trovato (o database vuoto).")
     else:
-        # metriche derivate
         df["fotografia_media"] = df[["fotografia_annika", "fotografia_francesco"]].mean(axis=1)
         df["regia_media"] = df[["regia_annika", "regia_francesco"]].mean(axis=1)
         df["sceneggiatura_media"] = df[["sceneggiatura_annika", "sceneggiatura_francesco"]].mean(axis=1)
@@ -225,12 +208,8 @@ with tab3:
 
         with c2:
             metrica = st.selectbox("Classifica per", [
-                "voto_finale",
-                "fotografia_media",
-                "regia_media",
-                "sceneggiatura_media",
-                "recitazione_media",
-                "globale_media",
+                "voto_finale", "fotografia_media", "regia_media",
+                "sceneggiatura_media", "recitazione_media", "globale_media",
             ], key="rank_metric")
 
         with c3:
@@ -242,17 +221,10 @@ with tab3:
                 topn = n
                 st.caption("Pochi risultati: mostro tutto.")
             else:
-                topn = st.slider(
-                    "Quanti risultati",
-                    1,
-                    n,
-                    min(n, 50),
-                    key="rank_topn"
-                )
+                topn = st.slider("Quanti risultati", 1, n, min(n, 50), key="rank_topn")
 
         asc = (ordine == "asc")
         view = df.sort_values(by=[metrica], ascending=asc, na_position="last").head(topn)
-
         view = view.reset_index(drop=True)
         view.index = view.index + 1
         view = view.rename_axis("posizione")
@@ -263,7 +235,7 @@ with tab3:
         )
 
 
-# ---------------- TAB 4: GESTISCI + STORICO ----------------
+# ---------------- TAB 4: GESTISCI ----------------
 with tab4:
     st.subheader("Gestisci archivio (modifica + storico)")
 
@@ -315,18 +287,14 @@ with tab4:
             glob_f  = st.number_input("Globale — Francesco", 0.0, 5.0, float(row["globale_francesco"] or 0), 0.5, key=f"{k}_glob_f")
 
         media_a, media_f, voto_finale, indice_conflitto = compute_scores(
-            regia_a, regia_f,
-            foto_a, foto_f,
-            scen_a, scen_f,
-            rec_a, rec_f,
-            glob_a, glob_f
+            regia_a, regia_f, foto_a, foto_f, scen_a, scen_f, rec_a, rec_f, glob_a, glob_f
         )
 
         st.info(f"Nuovo voto finale: {voto_finale:.2f} | Conflitto: {indice_conflitto:.2f}")
 
         if st.button("Salva modifiche (con storico)", key=f"{k}_save"):
             with get_conn() as conn:
-                conn.execute("""
+                conn.execute(text("""
                     INSERT INTO film_history (
                         film_id, changed_at, changed_by,
                         titolo, anno, note,
@@ -337,48 +305,57 @@ with tab4:
                         globale_annika, globale_francesco,
                         media_annika, media_francesco,
                         voto_finale, indice_conflitto
+                    ) VALUES (
+                        :film_id, :changed_at, :changed_by,
+                        :titolo, :anno, :note,
+                        :regia_annika, :regia_francesco,
+                        :fotografia_annika, :fotografia_francesco,
+                        :sceneggiatura_annika, :sceneggiatura_francesco,
+                        :recitazione_annika, :recitazione_francesco,
+                        :globale_annika, :globale_francesco,
+                        :media_annika, :media_francesco,
+                        :voto_finale, :indice_conflitto
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    film_id,
-                    datetime.datetime.now().isoformat(timespec="seconds"),
-                    f"{changed_by}{' — ' + motivo if motivo else ''}",
-                    row.get("titolo"),
-                    int(row["anno"]) if pd.notna(row["anno"]) else None,
-                    row.get("note"),
-                    row.get("regia_annika"), row.get("regia_francesco"),
-                    row.get("fotografia_annika"), row.get("fotografia_francesco"),
-                    row.get("sceneggiatura_annika"), row.get("sceneggiatura_francesco"),
-                    row.get("recitazione_annika"), row.get("recitazione_francesco"),
-                    row.get("globale_annika"), row.get("globale_francesco"),
-                    row.get("media_annika"), row.get("media_francesco"),
-                    row.get("voto_finale"), row.get("indice_conflitto")
-                ))
+                """), {
+                    "film_id": film_id,
+                    "changed_at": datetime.datetime.now().isoformat(timespec="seconds"),
+                    "changed_by": f"{changed_by}{' — ' + motivo if motivo else ''}",
+                    "titolo": row.get("titolo"),
+                    "anno": int(row["anno"]) if pd.notna(row["anno"]) else None,
+                    "note": row.get("note"),
+                    "regia_annika": row.get("regia_annika"), "regia_francesco": row.get("regia_francesco"),
+                    "fotografia_annika": row.get("fotografia_annika"), "fotografia_francesco": row.get("fotografia_francesco"),
+                    "sceneggiatura_annika": row.get("sceneggiatura_annika"), "sceneggiatura_francesco": row.get("sceneggiatura_francesco"),
+                    "recitazione_annika": row.get("recitazione_annika"), "recitazione_francesco": row.get("recitazione_francesco"),
+                    "globale_annika": row.get("globale_annika"), "globale_francesco": row.get("globale_francesco"),
+                    "media_annika": row.get("media_annika"), "media_francesco": row.get("media_francesco"),
+                    "voto_finale": row.get("voto_finale"), "indice_conflitto": row.get("indice_conflitto"),
+                })
 
-                conn.execute("""
+                conn.execute(text("""
                     UPDATE films SET
-                    titolo=?, anno=?, note=?,
-                    regia_annika=?, regia_francesco=?,
-                    fotografia_annika=?, fotografia_francesco=?,
-                    sceneggiatura_annika=?, sceneggiatura_francesco=?,
-                    recitazione_annika=?, recitazione_francesco=?,
-                    globale_annika=?, globale_francesco=?,
-                    media_annika=?, media_francesco=?,
-                    voto_finale=?, indice_conflitto=?
-                    WHERE id=?
-                """, (
-                    titolo_new,
-                    int(anno_new) if anno_new else None,
-                    note_new,
-                    regia_a, regia_f,
-                    foto_a, foto_f,
-                    scen_a, scen_f,
-                    rec_a, rec_f,
-                    glob_a, glob_f,
-                    media_a, media_f,
-                    voto_finale, indice_conflitto,
-                    film_id
-                ))
+                        titolo=:titolo, anno=:anno, note=:note,
+                        regia_annika=:regia_annika, regia_francesco=:regia_francesco,
+                        fotografia_annika=:fotografia_annika, fotografia_francesco=:fotografia_francesco,
+                        sceneggiatura_annika=:sceneggiatura_annika, sceneggiatura_francesco=:sceneggiatura_francesco,
+                        recitazione_annika=:recitazione_annika, recitazione_francesco=:recitazione_francesco,
+                        globale_annika=:globale_annika, globale_francesco=:globale_francesco,
+                        media_annika=:media_annika, media_francesco=:media_francesco,
+                        voto_finale=:voto_finale, indice_conflitto=:indice_conflitto
+                    WHERE id=:id
+                """), {
+                    "titolo": titolo_new,
+                    "anno": int(anno_new) if anno_new else None,
+                    "note": note_new,
+                    "regia_annika": regia_a, "regia_francesco": regia_f,
+                    "fotografia_annika": foto_a, "fotografia_francesco": foto_f,
+                    "sceneggiatura_annika": scen_a, "sceneggiatura_francesco": scen_f,
+                    "recitazione_annika": rec_a, "recitazione_francesco": rec_f,
+                    "globale_annika": glob_a, "globale_francesco": glob_f,
+                    "media_annika": media_a, "media_francesco": media_f,
+                    "voto_finale": voto_finale, "indice_conflitto": indice_conflitto,
+                    "id": film_id,
+                })
 
             st.success("Aggiornato. Versione precedente salvata in cronologia.")
             st.rerun()
@@ -386,12 +363,12 @@ with tab4:
         st.divider()
         st.markdown("### Cronologia modifiche")
 
-        with get_conn() as conn:
-            hist = pd.read_sql_query(
-                "SELECT changed_at, changed_by, titolo, anno, voto_finale, note FROM film_history WHERE film_id=? ORDER BY id DESC",
-                conn,
-                params=(film_id,)
-            )
+        engine = get_engine()
+        hist = pd.read_sql_query(
+            "SELECT changed_at, changed_by, titolo, anno, voto_finale, note FROM film_history WHERE film_id=%(film_id)s ORDER BY id DESC",
+            engine,
+            params={"film_id": film_id}
+        )
 
         if hist.empty:
             st.caption("Nessuna modifica registrata per questo film.")
