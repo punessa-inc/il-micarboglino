@@ -173,9 +173,14 @@ with tab3:
             cats = [("Regia","regia"),("Fotografia","fotografia"),("Sceneggiatura","sceneggiatura"),("Recitazione","recitazione"),("Globale","globale")]
             rows = [{"Categoria": l, "Annika": f"{film.get(f'{k}_annika'):.1f}" if pd.notna(film.get(f'{k}_annika')) else "—", "Francesco": f"{film.get(f'{k}_francesco'):.1f}" if pd.notna(film.get(f'{k}_francesco')) else "—"} for l,k in cats]
             st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
-            raw_note = film.get("note")
-            if pd.notna(raw_note) and str(raw_note).strip() not in ("", "None", "nan"):
-                st.markdown(f'<div style="color:#999;font-style:italic;font-size:0.85rem;margin-top:1rem;border-left:2px solid #c8a96e;padding-left:0.75rem">{raw_note}</div>', unsafe_allow_html=True)
+            try:
+                raw_note = film["note"]
+                note_ok = raw_note is not None and str(raw_note).strip() not in ("", "None", "nan", "NaN")
+                if note_ok:
+                    st.markdown("**Note:**")
+                    st.info(str(raw_note))
+            except Exception:
+                pass
 
 with tab2:
     st.subheader("Inserisci un film")
