@@ -93,6 +93,15 @@ def compute_scores(ra, rf, fa, ff, sa, sf, rea, ref_, ga, gf):
     mf = (rf + ff + sf + ref_ + gf) / 5
     return ma, mf, (ma + mf) / 2, (abs(ra-rf) + abs(fa-ff) + abs(sa-sf) + abs(rea-ref_) + abs(ga-gf)) / 5
 
+def sv(v):
+    """Convert numpy/pandas values to Python native types for SQL."""
+    if v is None: return None
+    try:
+        if pd.isna(v): return None
+    except Exception: pass
+    if hasattr(v, 'item'): return v.item()
+    return v
+
 def score_color(v):
     if v is None or pd.isna(v): return "#444"
     if v >= 4: return "#c8a96e"
@@ -245,9 +254,9 @@ with tab4:
         if st.button("Salva modifiche (con storico)", key=f"{k}_save"):
             with get_conn() as conn:
                 conn.execute(text("""INSERT INTO film_history (film_id,changed_at,changed_by,titolo,anno,note,regia_annika,regia_francesco,fotografia_annika,fotografia_francesco,sceneggiatura_annika,sceneggiatura_francesco,recitazione_annika,recitazione_francesco,globale_annika,globale_francesco,media_annika,media_francesco,voto_finale,indice_conflitto) VALUES (:film_id,:changed_at,:changed_by,:titolo,:anno,:note,:ra,:rf,:fa,:ff,:sa,:sf,:rea,:ref_,:ga,:gf,:ma,:mf,:vf,:ic)"""),
-                    {"film_id":film_id,"changed_at":datetime.datetime.now().isoformat(timespec="seconds"),"changed_by":f"{changed_by}{' — '+motivo if motivo else ''}","titolo":row.get("titolo"),"anno":int(row["anno"]) if pd.notna(row["anno"]) else None,"note":row.get("note"),"ra":row.get("regia_annika"),"rf":row.get("regia_francesco"),"fa":row.get("fotografia_annika"),"ff":row.get("fotografia_francesco"),"sa":row.get("sceneggiatura_annika"),"sf":row.get("sceneggiatura_francesco"),"rea":row.get("recitazione_annika"),"ref_":row.get("recitazione_francesco"),"ga":row.get("globale_annika"),"gf":row.get("globale_francesco"),"ma":row.get("media_annika"),"mf":row.get("media_francesco"),"vf":row.get("voto_finale"),"ic":row.get("indice_conflitto")})
+                    {"film_id":int(film_id),"changed_at":datetime.datetime.now().isoformat(timespec="seconds"),"changed_by":f"{changed_by}{' — '+motivo if motivo else ''}","titolo":sv(row.get("titolo")),"anno":int(row["anno"]) if pd.notna(row["anno"]) else None,"note":sv(row.get("note")),"ra":sv(row.get("regia_annika")),"rf":sv(row.get("regia_francesco")),"fa":sv(row.get("fotografia_annika")),"ff":sv(row.get("fotografia_francesco")),"sa":sv(row.get("sceneggiatura_annika")),"sf":sv(row.get("sceneggiatura_francesco")),"rea":sv(row.get("recitazione_annika")),"ref_":sv(row.get("recitazione_francesco")),"ga":sv(row.get("globale_annika")),"gf":sv(row.get("globale_francesco")),"ma":sv(row.get("media_annika")),"mf":sv(row.get("media_francesco")),"vf":sv(row.get("voto_finale")),"ic":sv(row.get("indice_conflitto"))})
                 conn.execute(text("""UPDATE films SET titolo=:titolo,titolo_originale=:t_orig,anno=:anno,note=:note,regia_annika=:ra,regia_francesco=:rf,fotografia_annika=:fa,fotografia_francesco=:ff,sceneggiatura_annika=:sa,sceneggiatura_francesco=:sf,recitazione_annika=:rea,recitazione_francesco=:ref_,globale_annika=:ga,globale_francesco=:gf,media_annika=:ma,media_francesco=:mf,voto_finale=:vf,indice_conflitto=:ic WHERE id=:id"""),
-                    {"titolo":titolo_new,"t_orig":titolo_orig_new or None,"anno":int(anno_new) if anno_new else None,"note":note_new,"ra":ra,"rf":rf,"fa":fa,"ff":ff,"sa":sa,"sf":sf,"rea":rea,"ref_":ref_,"ga":ga,"gf":gf,"ma":ma,"mf":mf,"vf":voto_finale,"ic":ic,"id":film_id})
+                    {"titolo":titolo_new,"t_orig":titolo_orig_new or None,"anno":int(anno_new) if anno_new else None,"note":note_new or None,"ra":float(ra),"rf":float(rf),"fa":float(fa),"ff":float(ff),"sa":float(sa),"sf":float(sf),"rea":float(rea),"ref_":float(ref_),"ga":float(ga),"gf":float(gf),"ma":float(ma),"mf":float(mf),"vf":float(voto_finale),"ic":float(ic),"id":int(film_id)})
             st.success("Aggiornato.")
             st.rerun()
         st.divider()
