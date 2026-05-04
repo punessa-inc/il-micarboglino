@@ -19,7 +19,7 @@ st.markdown("""
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=DM+Sans:wght@300;400;500&display=swap');
 html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; background-color: #0a0a0a; color: #e8e0d0; }
 .stApp { background-color: #0a0a0a; }
-h1, h2, h3 { font-family: 'Playfair Display', serif; color: #e8e0d0; }
+h1,h2,h3 { font-family: 'Playfair Display', serif; color: #e8e0d0; }
 .main-title { font-family: 'Playfair Display', serif; font-size: 2.8rem; font-weight: 700; color: #e8e0d0; letter-spacing: -0.02em; margin-bottom: 0; }
 .main-subtitle { font-size: 0.8rem; color: #555; letter-spacing: 0.15em; text-transform: uppercase; margin-top: 0.2rem; margin-bottom: 2rem; }
 div[data-testid="stTabs"] button { font-size: 0.75rem; letter-spacing: 0.12em; text-transform: uppercase; color: #555; }
@@ -28,7 +28,6 @@ div[data-testid="stTabs"] button[aria-selected="true"] { color: #c8a96e; border-
 .stButton button { background: #c8a96e !important; color: #0a0a0a !important; border: none !important; border-radius: 2px !important; font-weight: 500 !important; letter-spacing: 0.05em !important; }
 .stButton button:hover { background: #e8c97e !important; }
 [data-testid="stMetricValue"] { color: #c8a96e !important; font-family: 'Playfair Display', serif !important; }
-.stDataFrame { background: #111; }
 div[data-baseweb="select"] > div { background: #141414 !important; border-color: #222 !important; color: #e8e0d0 !important; }
 </style>
 """, unsafe_allow_html=True)
@@ -37,29 +36,37 @@ TMDB_KEY = st.secrets.get("TMDB_API_KEY", "")
 TMDB_IMG = "https://image.tmdb.org/t/p/w342"
 
 @st.cache_data(ttl=86400)
-def get_poster(titolo, anno=None):
-    if not TMDB_KEY or not titolo:
-        return None
-    try:
-        params = {"api_key": TMDB_KEY, "query": titolo, "language": "it-IT"}
-        if anno: params["year"] = int(anno)
-        r = requests.get("https://api.themoviedb.org/3/search/movie", params=params, timeout=5)
-        results = r.json().get("results", [])
-        if results and results[0].get("poster_path"):
-            return TMDB_IMG + results[0]["poster_path"]
-        if anno:
-            params.pop("year")
+def get_poster(titolo, titolo_originale=None, anno=None):
+    if not TMDB_KEY: return None
+    def search(query, year=None):
+        try:
+            params = {"api_key": TMDB_KEY, "query": query, "language": "it-IT"}
+            if year: params["year"] = int(year)
             r = requests.get("https://api.themoviedb.org/3/search/movie", params=params, timeout=5)
             results = r.json().get("results", [])
             if results and results[0].get("poster_path"):
                 return TMDB_IMG + results[0]["poster_path"]
-    except Exception:
-        pass
+            if year:
+                params.pop("year")
+                r = requests.get("https://api.themoviedb.org/3/search/movie", params=params, timeout=5)
+                results = r.json().get("results", [])
+                if results and results[0].get("poster_path"):
+                    return TMDB_IMG + results[0]["poster_path"]
+        except Exception:
+            pass
+        return None
+    if titolo:
+        p = search(titolo, anno)
+        if p: return p
+    if titolo_originale:
+        p = search(titolo_originale, anno)
+        if p: return p
     return None
 
 def insert_df(df: pd.DataFrame):
     cols = {
-        "FILM_RAW": "film_raw", "TITOLO": "titolo", "REGISTA": "regista", "PAESE": "paese", "ANNO": "anno", "NOTE": "note",
+        "FILM_RAW": "film_raw", "TITOLO": "titolo", "TITOLO_ORIGINALE": "titolo_originale",
+        "REGISTA": "regista", "PAESE": "paese", "ANNO": "anno", "NOTE": "note",
         "REGIA_ANNIKA": "regia_annika", "REGIA_FRANCESCO": "regia_francesco",
         "FOTOGRAFIA_ANNIKA": "fotografia_annika", "FOTOGRAFIA_FRANCESCO": "fotografia_francesco",
         "SCENEGGIATURA_ANNIKA": "sceneggiatura_annika", "SCENEGGIATURA_FRANCESCO": "sceneggiatura_francesco",
@@ -105,15 +112,15 @@ with tab3:
     with col_search:
         query = st.text_input("", placeholder="🔍  Cerca un film...", key="search_title", label_visibility="collapsed")
     with col_sort:
-        metrica = st.selectbox("", ["voto_finale", "regia_media", "fotografia_media", "sceneggiatura_media", "recitazione_media", "globale_media"], key="rank_metric", label_visibility="collapsed")
+        metrica = st.selectbox("", ["voto_finale","regia_media","fotografia_media","sceneggiatura_media","recitazione_media","globale_media"], key="rank_metric", label_visibility="collapsed")
     with col_ord:
         ordine = st.selectbox("", ["↓ desc", "↑ asc"], key="rank_order", label_visibility="collapsed")
 
     if query:
         df = df[df["titolo"].astype(str).str.contains(query, case=False, na=False)]
 
-    for col in ["fotografia_media", "regia_media", "sceneggiatura_media", "recitazione_media", "globale_media"]:
-        base = col.replace("_media", "")
+    for col in ["fotografia_media","regia_media","sceneggiatura_media","recitazione_media","globale_media"]:
+        base = col.replace("_media","")
         df[col] = df[[f"{base}_annika", f"{base}_francesco"]].mean(axis=1)
 
     df_sorted = df.sort_values(metrica, ascending="asc" in ordine, na_position="last").reset_index(drop=True)
@@ -125,27 +132,31 @@ with tab3:
         grid_cols = st.columns(cols_per_row)
         for i, (_, film) in enumerate(row_films.iterrows()):
             with grid_cols[i]:
-                poster_url = get_poster(film["titolo"], film.get("anno"))
+                t_orig = film.get("titolo_originale") if "titolo_originale" in film and pd.notna(film.get("titolo_originale")) else None
+                poster_url = get_poster(film["titolo"], t_orig, film.get("anno"))
                 voto = film.get("voto_finale")
                 conflict = film.get("indice_conflitto")
                 anno = int(film["anno"]) if pd.notna(film.get("anno")) else ""
                 voto_str = f"{voto:.1f}" if pd.notna(voto) else "—"
-                conflict_str = f" ⚡{conflict:.1f}" if pd.notna(conflict) and conflict > 1 else ""
+                conflict_str = f" ⚡" if pd.notna(conflict) and conflict > 1 else ""
                 col_v = score_color(voto)
+                note_txt = film.get("note") or ""
+                note_html = f'<div style="font-size:0.6rem;color:#888;font-style:italic;margin-top:0.3rem;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.3">{note_txt}</div>' if note_txt and pd.notna(note_txt) else ""
                 titolo_short = (film["titolo"] or "")[:28]
 
                 if poster_url:
-                    img_html = f'<img src="{poster_url}" style="width:100%;aspect-ratio:2/3;object-fit:cover;display:block;border-radius:2px 2px 0 0">'
+                    img_html = f'<div style="position:relative"><img src="{poster_url}" style="width:100%;aspect-ratio:2/3;object-fit:cover;display:block;border-radius:2px 2px 0 0"><div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent 30%,rgba(0,0,0,0.9));padding:1.5rem 0.6rem 0.5rem"><span style="font-family:Playfair Display,serif;font-size:1.6rem;font-weight:700;color:{col_v};text-shadow:0 1px 4px rgba(0,0,0,0.8)">{voto_str}</span><span style="font-size:0.7rem;color:#cc5555;margin-left:2px">{conflict_str}</span></div></div>'
                 else:
-                    img_html = f'<div style="width:100%;aspect-ratio:2/3;background:#161616;display:flex;align-items:center;justify-content:center;border-radius:2px 2px 0 0;padding:0.75rem;box-sizing:border-box"><span style="font-family:\'Playfair Display\',serif;font-size:0.7rem;color:#333;text-align:center;line-height:1.4">{titolo_short}</span></div>'
+                    img_html = f'<div style="width:100%;aspect-ratio:2/3;background:#161616;display:flex;align-items:center;justify-content:center;border-radius:2px 2px 0 0;padding:0.75rem;box-sizing:border-box"><span style="font-family:Playfair Display,serif;font-size:0.7rem;color:#333;text-align:center;line-height:1.4">{titolo_short}</span></div>'
 
                 st.markdown(f"""
                 <div style="background:#111;border-radius:2px;overflow:hidden;margin-bottom:1rem">
                     {img_html}
-                    <div style="padding:0.5rem 0.6rem 0.6rem">
-                        <div style="font-family:'Playfair Display',serif;font-size:0.72rem;color:#ddd;font-weight:700;line-height:1.3;margin-bottom:0.15rem;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">{film['titolo']}</div>
-                        <div style="font-size:0.62rem;color:#555;margin-bottom:0.25rem">{anno}</div>
-                        <div style="font-family:'Playfair Display',serif;font-size:0.95rem;font-weight:700;color:{col_v}">{voto_str}<span style="font-size:0.6rem;color:#884444">{conflict_str}</span></div>
+                    <div style="padding:0.5rem 0.6rem 0.7rem">
+                        <div style="font-family:Playfair Display,serif;font-size:0.72rem;color:#ddd;font-weight:700;line-height:1.3;margin-bottom:0.1rem;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">{film['titolo']}</div>
+                        <div style="font-size:0.62rem;color:#555;margin-bottom:0.2rem">{anno}</div>
+                        {'' if poster_url else f'<div style="font-family:Playfair Display,serif;font-size:1.1rem;font-weight:700;color:{col_v}">{voto_str}<span style="font-size:0.65rem;color:#cc5555">{conflict_str}</span></div>'}
+                        {note_html}
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -156,7 +167,8 @@ with tab3:
     if labels:
         pick = st.selectbox("Scegli film", range(len(labels)), format_func=lambda i: labels[i], key="detail_pick")
         film = df_sorted.iloc[pick]
-        poster_url = get_poster(film["titolo"], film.get("anno"))
+        t_orig = film.get("titolo_originale") if "titolo_originale" in film and pd.notna(film.get("titolo_originale")) else None
+        poster_url = get_poster(film["titolo"], t_orig, film.get("anno"))
         dcol1, dcol2 = st.columns([1, 3])
         with dcol1:
             if poster_url: st.image(poster_url, use_container_width=True)
@@ -164,20 +176,21 @@ with tab3:
             st.markdown(f"<h2 style='margin-top:0;font-family:Playfair Display,serif'>{film['titolo']}</h2>", unsafe_allow_html=True)
             meta = [x for x in [film.get("regista"), str(int(film["anno"])) if pd.notna(film.get("anno")) else None, film.get("paese")] if x and pd.notna(x)]
             st.markdown(f"<div style='color:#666;font-size:0.82rem;margin-bottom:1.2rem'>{' · '.join(meta)}</div>", unsafe_allow_html=True)
-            m1, m2, m3, m4 = st.columns(4)
+            m1,m2,m3,m4 = st.columns(4)
             with m1: st.metric("Voto finale", f"{film['voto_finale']:.2f}" if pd.notna(film.get('voto_finale')) else "—")
             with m2: st.metric("Annika", f"{film['media_annika']:.2f}" if pd.notna(film.get('media_annika')) else "—")
             with m3: st.metric("Francesco", f"{film['media_francesco']:.2f}" if pd.notna(film.get('media_francesco')) else "—")
             with m4: st.metric("Conflitto", f"{film['indice_conflitto']:.2f}" if pd.notna(film.get('indice_conflitto')) else "—")
             cats = [("Regia","regia"),("Fotografia","fotografia"),("Sceneggiatura","sceneggiatura"),("Recitazione","recitazione"),("Globale","globale")]
-            rows = [{"Categoria": l, "Annika": f"{film.get(f'{k}_annika'):.1f}" if pd.notna(film.get(f'{k}_annika')) else "—", "Francesco": f"{film.get(f'{k}_francesco'):.1f}" if pd.notna(film.get(f'{k}_francesco')) else "—"} for l, k in cats]
+            rows = [{"Categoria": l, "Annika": f"{film.get(f'{k}_annika'):.1f}" if pd.notna(film.get(f'{k}_annika')) else "—", "Francesco": f"{film.get(f'{k}_francesco'):.1f}" if pd.notna(film.get(f'{k}_francesco')) else "—"} for l,k in cats]
             st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
             if pd.notna(film.get("note")) and film["note"]:
-                st.markdown(f"<div style='color:#888;font-style:italic;font-size:0.82rem;margin-top:0.75rem;border-left:2px solid #c8a96e;padding-left:0.75rem'>{film['note']}</div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='color:#999;font-style:italic;font-size:0.85rem;margin-top:1rem;border-left:2px solid #c8a96e;padding-left:0.75rem'>{film['note']}</div>", unsafe_allow_html=True)
 
 with tab2:
     st.subheader("Inserisci un film")
     titolo = st.text_input("Titolo", key="new_titolo")
+    titolo_orig = st.text_input("Titolo originale (per la locandina, se diverso)", key="new_titolo_orig")
     regista = st.text_input("Regista (facoltativo)", key="new_regista")
     anno = st.number_input("Anno", 1800, 2100, 2000, key="new_anno")
     note = st.text_area("Note", key="new_note")
@@ -187,17 +200,14 @@ with tab2:
         with a: va = st.number_input(f"{label} — Annika", 0.0, 5.0, 0.0, 0.5, key=f"{k}_a")
         with f: vf = st.number_input(f"{label} — Francesco", 0.0, 5.0, 0.0, 0.5, key=f"{k}_f")
         return va, vf
-    ra, rf = v("Regia", "new_regia")
-    fa, ff = v("Fotografia", "new_foto")
-    sa, sf = v("Sceneggiatura", "new_scen")
-    rea, ref_ = v("Recitazione", "new_rec")
-    ga, gf = v("Globale", "new_glob")
-    ma, mf, voto_finale, ic = compute_scores(ra, rf, fa, ff, sa, sf, rea, ref_, ga, gf)
+    ra,rf = v("Regia","new_regia"); fa,ff = v("Fotografia","new_foto")
+    sa,sf = v("Sceneggiatura","new_scen"); rea,ref_ = v("Recitazione","new_rec"); ga,gf = v("Globale","new_glob")
+    ma,mf,voto_finale,ic = compute_scores(ra,rf,fa,ff,sa,sf,rea,ref_,ga,gf)
     st.info(f"Media Annika: {ma:.2f}  |  Media Francesco: {mf:.2f}  |  Voto finale: {voto_finale:.2f}")
     if st.button("Salva film", key="btn_save_new"):
         if not titolo.strip(): st.error("Metti almeno il titolo.")
         else:
-            insert_df(pd.DataFrame([{"FILM_RAW": titolo, "TITOLO": titolo, "REGISTA": regista or None, "PAESE": None, "ANNO": int(anno) if anno else None, "NOTE": note or None, "REGIA_ANNIKA": ra, "REGIA_FRANCESCO": rf, "FOTOGRAFIA_ANNIKA": fa, "FOTOGRAFIA_FRANCESCO": ff, "SCENEGGIATURA_ANNIKA": sa, "SCENEGGIATURA_FRANCESCO": sf, "RECITAZIONE_ANNIKA": rea, "RECITAZIONE_FRANCESCO": ref_, "GLOBALE_ANNIKA": ga, "GLOBALE_FRANCESCO": gf, "MEDIA_ANNIKA": ma, "MEDIA_FRANCESCO": mf, "VOTO FINALE": voto_finale, "INDICE_CONFLITTO": ic}]))
+            insert_df(pd.DataFrame([{"FILM_RAW": titolo, "TITOLO": titolo, "TITOLO_ORIGINALE": titolo_orig or None, "REGISTA": regista or None, "PAESE": None, "ANNO": int(anno) if anno else None, "NOTE": note or None, "REGIA_ANNIKA": ra, "REGIA_FRANCESCO": rf, "FOTOGRAFIA_ANNIKA": fa, "FOTOGRAFIA_FRANCESCO": ff, "SCENEGGIATURA_ANNIKA": sa, "SCENEGGIATURA_FRANCESCO": sf, "RECITAZIONE_ANNIKA": rea, "RECITAZIONE_FRANCESCO": ref_, "GLOBALE_ANNIKA": ga, "GLOBALE_FRANCESCO": gf, "MEDIA_ANNIKA": ma, "MEDIA_FRANCESCO": mf, "VOTO FINALE": voto_finale, "INDICE_CONFLITTO": ic}]))
             st.success("Film salvato.")
             st.rerun()
 
@@ -206,21 +216,23 @@ with tab4:
     df = load_all()
     if df.empty: st.warning("Database vuoto.")
     else:
-        df_sorted = df.sort_values(["titolo", "anno"], na_position="last").reset_index(drop=True)
+        df_sorted = df.sort_values(["titolo","anno"], na_position="last").reset_index(drop=True)
         labels = df_sorted.apply(lambda r: f'{r["titolo"]} ({int(r["anno"]) if pd.notna(r["anno"]) else "?"})', axis=1).tolist()
         ids = df_sorted["id"].astype(int).tolist()
         pick = st.selectbox("Scegli film", range(len(labels)), format_func=lambda i: labels[i], key="manage_pick")
         film_id = int(ids[pick])
         row = df_sorted[df_sorted["id"] == film_id].iloc[0]
         st.divider()
-        changed_by = st.selectbox("Chi modifica", ["Francesco", "Annika"], key="manage_by")
+        changed_by = st.selectbox("Chi modifica", ["Francesco","Annika"], key="manage_by")
         motivo = st.text_input("Motivo (facoltativo)", key="manage_reason")
         k = f"film_{film_id}"
         titolo_new = st.text_input("Titolo", value=row["titolo"], key=f"{k}_titolo")
+        t_orig_val = row.get("titolo_originale") if "titolo_originale" in row and pd.notna(row.get("titolo_originale")) else ""
+        titolo_orig_new = st.text_input("Titolo originale", value=t_orig_val, key=f"{k}_titolo_orig")
         anno_new = st.number_input("Anno", 1800, 2100, int(row["anno"]) if pd.notna(row["anno"]) else 2000, key=f"{k}_anno")
         note_new = st.text_area("Note", value=row.get("note") or "", key=f"{k}_note")
         st.markdown("### Voti (0–5)")
-        cA, cF = st.columns(2)
+        cA,cF = st.columns(2)
         with cA:
             ra = st.number_input("Regia — Annika", 0.0, 5.0, float(row["regia_annika"] or 0), 0.5, key=f"{k}_ra")
             fa = st.number_input("Fotografia — Annika", 0.0, 5.0, float(row["fotografia_annika"] or 0), 0.5, key=f"{k}_fa")
@@ -233,29 +245,29 @@ with tab4:
             sf = st.number_input("Sceneggiatura — Francesco", 0.0, 5.0, float(row["sceneggiatura_francesco"] or 0), 0.5, key=f"{k}_sf")
             ref_ = st.number_input("Recitazione — Francesco", 0.0, 5.0, float(row["recitazione_francesco"] or 0), 0.5, key=f"{k}_ref")
             gf = st.number_input("Globale — Francesco", 0.0, 5.0, float(row["globale_francesco"] or 0), 0.5, key=f"{k}_gf")
-        ma, mf, voto_finale, ic = compute_scores(ra, rf, fa, ff, sa, sf, rea, ref_, ga, gf)
+        ma,mf,voto_finale,ic = compute_scores(ra,rf,fa,ff,sa,sf,rea,ref_,ga,gf)
         st.info(f"Nuovo voto finale: {voto_finale:.2f}  |  Conflitto: {ic:.2f}")
         if st.button("Salva modifiche (con storico)", key=f"{k}_save"):
             with get_conn() as conn:
-                conn.execute(text("""INSERT INTO film_history (film_id, changed_at, changed_by, titolo, anno, note, regia_annika, regia_francesco, fotografia_annika, fotografia_francesco, sceneggiatura_annika, sceneggiatura_francesco, recitazione_annika, recitazione_francesco, globale_annika, globale_francesco, media_annika, media_francesco, voto_finale, indice_conflitto) VALUES (:film_id, :changed_at, :changed_by, :titolo, :anno, :note, :ra, :rf, :fa, :ff, :sa, :sf, :rea, :ref_, :ga, :gf, :ma, :mf, :vf, :ic)"""),
-                    {"film_id": film_id, "changed_at": datetime.datetime.now().isoformat(timespec="seconds"), "changed_by": f"{changed_by}{' — ' + motivo if motivo else ''}", "titolo": row.get("titolo"), "anno": int(row["anno"]) if pd.notna(row["anno"]) else None, "note": row.get("note"), "ra": row.get("regia_annika"), "rf": row.get("regia_francesco"), "fa": row.get("fotografia_annika"), "ff": row.get("fotografia_francesco"), "sa": row.get("sceneggiatura_annika"), "sf": row.get("sceneggiatura_francesco"), "rea": row.get("recitazione_annika"), "ref_": row.get("recitazione_francesco"), "ga": row.get("globale_annika"), "gf": row.get("globale_francesco"), "ma": row.get("media_annika"), "mf": row.get("media_francesco"), "vf": row.get("voto_finale"), "ic": row.get("indice_conflitto")})
-                conn.execute(text("""UPDATE films SET titolo=:titolo, anno=:anno, note=:note, regia_annika=:ra, regia_francesco=:rf, fotografia_annika=:fa, fotografia_francesco=:ff, sceneggiatura_annika=:sa, sceneggiatura_francesco=:sf, recitazione_annika=:rea, recitazione_francesco=:ref_, globale_annika=:ga, globale_francesco=:gf, media_annika=:ma, media_francesco=:mf, voto_finale=:vf, indice_conflitto=:ic WHERE id=:id"""),
-                    {"titolo": titolo_new, "anno": int(anno_new) if anno_new else None, "note": note_new, "ra": ra, "rf": rf, "fa": fa, "ff": ff, "sa": sa, "sf": sf, "rea": rea, "ref_": ref_, "ga": ga, "gf": gf, "ma": ma, "mf": mf, "vf": voto_finale, "ic": ic, "id": film_id})
+                conn.execute(text("""INSERT INTO film_history (film_id,changed_at,changed_by,titolo,anno,note,regia_annika,regia_francesco,fotografia_annika,fotografia_francesco,sceneggiatura_annika,sceneggiatura_francesco,recitazione_annika,recitazione_francesco,globale_annika,globale_francesco,media_annika,media_francesco,voto_finale,indice_conflitto) VALUES (:film_id,:changed_at,:changed_by,:titolo,:anno,:note,:ra,:rf,:fa,:ff,:sa,:sf,:rea,:ref_,:ga,:gf,:ma,:mf,:vf,:ic)"""),
+                    {"film_id":film_id,"changed_at":datetime.datetime.now().isoformat(timespec="seconds"),"changed_by":f"{changed_by}{' — '+motivo if motivo else ''}","titolo":row.get("titolo"),"anno":int(row["anno"]) if pd.notna(row["anno"]) else None,"note":row.get("note"),"ra":row.get("regia_annika"),"rf":row.get("regia_francesco"),"fa":row.get("fotografia_annika"),"ff":row.get("fotografia_francesco"),"sa":row.get("sceneggiatura_annika"),"sf":row.get("sceneggiatura_francesco"),"rea":row.get("recitazione_annika"),"ref_":row.get("recitazione_francesco"),"ga":row.get("globale_annika"),"gf":row.get("globale_francesco"),"ma":row.get("media_annika"),"mf":row.get("media_francesco"),"vf":row.get("voto_finale"),"ic":row.get("indice_conflitto")})
+                conn.execute(text("""UPDATE films SET titolo=:titolo,titolo_originale=:t_orig,anno=:anno,note=:note,regia_annika=:ra,regia_francesco=:rf,fotografia_annika=:fa,fotografia_francesco=:ff,sceneggiatura_annika=:sa,sceneggiatura_francesco=:sf,recitazione_annika=:rea,recitazione_francesco=:ref_,globale_annika=:ga,globale_francesco=:gf,media_annika=:ma,media_francesco=:mf,voto_finale=:vf,indice_conflitto=:ic WHERE id=:id"""),
+                    {"titolo":titolo_new,"t_orig":titolo_orig_new or None,"anno":int(anno_new) if anno_new else None,"note":note_new,"ra":ra,"rf":rf,"fa":fa,"ff":ff,"sa":sa,"sf":sf,"rea":rea,"ref_":ref_,"ga":ga,"gf":gf,"ma":ma,"mf":mf,"vf":voto_finale,"ic":ic,"id":film_id})
             st.success("Aggiornato.")
             st.rerun()
         st.divider()
         st.markdown("### Cronologia modifiche")
-        hist = pd.read_sql_query("SELECT changed_at, changed_by, titolo, anno, voto_finale, note FROM film_history WHERE film_id=%(film_id)s ORDER BY id DESC", get_engine(), params={"film_id": film_id})
+        hist = pd.read_sql_query("SELECT changed_at,changed_by,titolo,anno,voto_finale,note FROM film_history WHERE film_id=%(film_id)s ORDER BY id DESC", get_engine(), params={"film_id":film_id})
         if hist.empty: st.caption("Nessuna modifica registrata.")
         else: st.dataframe(hist, use_container_width=True)
 
 with tab1:
     st.subheader("Importa Excel/CSV")
-    up = st.file_uploader("Carica un file", type=["xlsx", "xls", "csv"], key="import_uploader")
+    up = st.file_uploader("Carica un file", type=["xlsx","xls","csv"], key="import_uploader")
     if up is not None:
         try:
             import tempfile
-            if up.name.lower().endswith((".xlsx", ".xls")):
+            if up.name.lower().endswith((".xlsx",".xls")):
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
                     tmp.write(up.getbuffer()); tmp_path = tmp.name
                 df = parse_excel_like_yours(tmp_path)
