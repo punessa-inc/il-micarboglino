@@ -112,6 +112,20 @@ def score_color(v):
 st.markdown('<p style="font-family:Playfair Display,serif;font-size:2.8rem;font-weight:700;color:#e8e0d0;letter-spacing:-0.02em;margin-bottom:0">🎬 il Micarboglino</p>', unsafe_allow_html=True)
 st.markdown('<p style="font-size:0.8rem;color:#555;letter-spacing:0.15em;text-transform:uppercase;margin-top:0;margin-bottom:2rem">Francesco + Annika &nbsp;·&nbsp; il cinema come referendum domestico</p>', unsafe_allow_html=True)
 
+# PIN sessione
+if "unlocked" not in st.session_state:
+    st.session_state["unlocked"] = False
+
+if not st.session_state["unlocked"]:
+    with st.expander("🔒 Accesso area di modifica", expanded=False):
+        pin_input = st.text_input("PIN", type="password", key="pin_input")
+        if st.button("Sblocca", key="btn_unlock"):
+            if pin_input == st.secrets.get("APP_PIN", ""):
+                st.session_state["unlocked"] = True
+                st.rerun()
+            else:
+                st.error("PIN errato.")
+
 tab3, tab2, tab4, tab1 = st.tabs(["Classifiche", "Inserisci film", "Gestisci", "Import"])
 
 with tab3:
@@ -192,6 +206,9 @@ with tab3:
                 pass
 
 with tab2:
+    if not st.session_state.get("unlocked"):
+        st.warning("🔒 Inserisci il PIN in cima alla pagina per accedere a questa sezione.")
+        st.stop()
     st.subheader("Inserisci un film")
     titolo = st.text_input("Titolo", key="new_titolo")
     titolo_orig = st.text_input("Titolo originale (per la locandina, se diverso)", key="new_titolo_orig")
@@ -216,6 +233,9 @@ with tab2:
             st.rerun()
 
 with tab4:
+    if not st.session_state.get("unlocked"):
+        st.warning("🔒 Inserisci il PIN in cima alla pagina per accedere a questa sezione.")
+        st.stop()
     st.subheader("Gestisci archivio")
     df = load_all()
     if df.empty: st.warning("Database vuoto.")
@@ -266,6 +286,9 @@ with tab4:
         else: st.dataframe(hist, use_container_width=True)
 
 with tab1:
+    if not st.session_state.get("unlocked"):
+        st.warning("🔒 Inserisci il PIN in cima alla pagina per accedere a questa sezione.")
+        st.stop()
     st.subheader("Importa Excel/CSV")
     up = st.file_uploader("Carica un file", type=["xlsx","xls","csv"], key="import_uploader")
     if up is not None:
