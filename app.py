@@ -20,8 +20,6 @@ st.markdown("""
 html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; background-color: #0a0a0a; color: #e8e0d0; }
 .stApp { background-color: #0a0a0a; }
 h1,h2,h3 { font-family: 'Playfair Display', serif; color: #e8e0d0; }
-.main-title { font-family: 'Playfair Display', serif; font-size: 2.8rem; font-weight: 700; color: #e8e0d0; letter-spacing: -0.02em; margin-bottom: 0; }
-.main-subtitle { font-size: 0.8rem; color: #555; letter-spacing: 0.15em; text-transform: uppercase; margin-top: 0.2rem; margin-bottom: 2rem; }
 div[data-testid="stTabs"] button { font-size: 0.75rem; letter-spacing: 0.12em; text-transform: uppercase; color: #555; }
 div[data-testid="stTabs"] button[aria-selected="true"] { color: #c8a96e; border-bottom-color: #c8a96e !important; }
 .stTextInput input, .stTextArea textarea, .stNumberInput input { background: #141414 !important; border: 1px solid #222 !important; color: #e8e0d0 !important; border-radius: 2px !important; }
@@ -29,6 +27,7 @@ div[data-testid="stTabs"] button[aria-selected="true"] { color: #c8a96e; border-
 .stButton button:hover { background: #e8c97e !important; }
 [data-testid="stMetricValue"] { color: #c8a96e !important; font-family: 'Playfair Display', serif !important; }
 div[data-baseweb="select"] > div { background: #141414 !important; border-color: #222 !important; color: #e8e0d0 !important; }
+img { border-radius: 2px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -101,8 +100,8 @@ def score_color(v):
     if v >= 2: return "#8898aa"
     return "#aa6868"
 
-st.markdown('<div class="main-title">🎬 il Micarboglino</div>', unsafe_allow_html=True)
-st.markdown('<div class="main-subtitle">Francesco + Annika &nbsp;·&nbsp; il cinema come referendum domestico</div>', unsafe_allow_html=True)
+st.markdown('<p style="font-family:Playfair Display,serif;font-size:2.8rem;font-weight:700;color:#e8e0d0;letter-spacing:-0.02em;margin-bottom:0">🎬 il Micarboglino</p>', unsafe_allow_html=True)
+st.markdown('<p style="font-size:0.8rem;color:#555;letter-spacing:0.15em;text-transform:uppercase;margin-top:0;margin-bottom:2rem">Francesco + Annika &nbsp;·&nbsp; il cinema come referendum domestico</p>', unsafe_allow_html=True)
 
 tab3, tab2, tab4, tab1 = st.tabs(["Classifiche", "Inserisci film", "Gestisci", "Import"])
 
@@ -124,7 +123,7 @@ with tab3:
         df[col] = df[[f"{base}_annika", f"{base}_francesco"]].mean(axis=1)
 
     df_sorted = df.sort_values(metrica, ascending="asc" in ordine, na_position="last").reset_index(drop=True)
-    st.markdown(f"<div style='color:#444;font-size:0.75rem;margin-bottom:1.5rem'>{len(df_sorted)} film</div>", unsafe_allow_html=True)
+    st.caption(f"{len(df_sorted)} film")
 
     cols_per_row = 6
     for row_start in range(0, len(df_sorted), cols_per_row):
@@ -136,31 +135,22 @@ with tab3:
                 poster_url = get_poster(film["titolo"], t_orig, film.get("anno"))
                 voto = film.get("voto_finale")
                 conflict = film.get("indice_conflitto")
-                anno = int(film["anno"]) if pd.notna(film.get("anno")) else ""
+                anno = str(int(film["anno"])) if pd.notna(film.get("anno")) else ""
                 voto_str = f"{voto:.1f}" if pd.notna(voto) else "—"
-                conflict_str = f" ⚡" if pd.notna(conflict) and conflict > 1 else ""
                 col_v = score_color(voto)
-                note_html = ""
-                titolo_short = (film["titolo"] or "")[:28]
+                has_conflict = pd.notna(conflict) and conflict > 1
 
                 if poster_url:
-                    img_html = f'<div style="position:relative"><img src="{poster_url}" style="width:100%;aspect-ratio:2/3;object-fit:cover;display:block;border-radius:2px 2px 0 0"><div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent 30%,rgba(0,0,0,0.9));padding:1.5rem 0.6rem 0.5rem"><span style="font-family:Playfair Display,serif;font-size:1.6rem;font-weight:700;color:{col_v};text-shadow:0 1px 4px rgba(0,0,0,0.8)">{voto_str}</span><span style="font-size:0.7rem;color:#cc5555;margin-left:2px">{conflict_str}</span></div></div>'
+                    st.image(poster_url, use_container_width=True)
                 else:
-                    img_html = f'<div style="width:100%;aspect-ratio:2/3;background:#161616;display:flex;align-items:center;justify-content:center;border-radius:2px 2px 0 0;padding:0.75rem;box-sizing:border-box"><span style="font-family:Playfair Display,serif;font-size:0.7rem;color:#333;text-align:center;line-height:1.4">{titolo_short}</span></div>'
+                    st.markdown(f'<div style="aspect-ratio:2/3;background:#161616;display:flex;align-items:center;justify-content:center;padding:0.5rem;margin-bottom:4px"><span style="font-size:0.68rem;color:#444;text-align:center">{film["titolo"][:30]}</span></div>', unsafe_allow_html=True)
 
-                st.markdown(f"""
-                <div style="background:#111;border-radius:2px;overflow:hidden;margin-bottom:1rem">
-                    {img_html}
-                    <div style="padding:0.5rem 0.6rem 0.7rem">
-                        <div style="font-family:Playfair Display,serif;font-size:0.72rem;color:#ddd;font-weight:700;line-height:1.3;margin-bottom:0.1rem;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">{film['titolo']}</div>
-                        <div style="font-size:0.62rem;color:#555;margin-bottom:0.2rem">{anno}</div>
-                        {'' if poster_url else f'<div style="font-family:Playfair Display,serif;font-size:1.1rem;font-weight:700;color:{col_v}">{voto_str}<span style="font-size:0.65rem;color:#cc5555">{conflict_str}</span></div>'}
-                        {note_html}
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
+                conflict_icon = " ⚡" if has_conflict else ""
+                st.markdown(f'<span style="font-family:Playfair Display,serif;font-size:1.5rem;font-weight:700;color:{col_v}">{voto_str}</span><span style="font-size:0.7rem;color:#cc4444">{conflict_icon}</span>', unsafe_allow_html=True)
+                st.markdown(f'<div style="font-size:0.7rem;color:#ccc;font-weight:600;line-height:1.3;margin-bottom:1px">{film["titolo"]}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="font-size:0.6rem;color:#555;margin-bottom:1.2rem">{anno}</div>', unsafe_allow_html=True)
 
-    st.markdown("<hr style='border:none;border-top:1px solid #1a1a1a;margin:2rem 0'>", unsafe_allow_html=True)
+    st.markdown("---")
     st.markdown("### Dettaglio film")
     labels = df_sorted.apply(lambda r: f'{r["titolo"]} ({int(r["anno"]) if pd.notna(r.get("anno")) else "?"})', axis=1).tolist()
     if labels:
@@ -172,9 +162,9 @@ with tab3:
         with dcol1:
             if poster_url: st.image(poster_url, use_container_width=True)
         with dcol2:
-            st.markdown(f"<h2 style='margin-top:0;font-family:Playfair Display,serif'>{film['titolo']}</h2>", unsafe_allow_html=True)
+            st.markdown(f'<h2 style="margin-top:0;font-family:Playfair Display,serif">{film["titolo"]}</h2>', unsafe_allow_html=True)
             meta = [x for x in [film.get("regista"), str(int(film["anno"])) if pd.notna(film.get("anno")) else None, film.get("paese")] if x and pd.notna(x)]
-            st.markdown(f"<div style='color:#666;font-size:0.82rem;margin-bottom:1.2rem'>{' · '.join(meta)}</div>", unsafe_allow_html=True)
+            st.markdown(f'<div style="color:#666;font-size:0.82rem;margin-bottom:1.2rem">{" · ".join(meta)}</div>', unsafe_allow_html=True)
             m1,m2,m3,m4 = st.columns(4)
             with m1: st.metric("Voto finale", f"{film['voto_finale']:.2f}" if pd.notna(film.get('voto_finale')) else "—")
             with m2: st.metric("Annika", f"{film['media_annika']:.2f}" if pd.notna(film.get('media_annika')) else "—")
@@ -183,8 +173,9 @@ with tab3:
             cats = [("Regia","regia"),("Fotografia","fotografia"),("Sceneggiatura","sceneggiatura"),("Recitazione","recitazione"),("Globale","globale")]
             rows = [{"Categoria": l, "Annika": f"{film.get(f'{k}_annika'):.1f}" if pd.notna(film.get(f'{k}_annika')) else "—", "Francesco": f"{film.get(f'{k}_francesco'):.1f}" if pd.notna(film.get(f'{k}_francesco')) else "—"} for l,k in cats]
             st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
-            if pd.notna(film.get("note")) and film["note"]:
-                st.markdown(f"<div style='color:#999;font-style:italic;font-size:0.85rem;margin-top:1rem;border-left:2px solid #c8a96e;padding-left:0.75rem'>{film['note']}</div>", unsafe_allow_html=True)
+            raw_note = film.get("note")
+            if pd.notna(raw_note) and str(raw_note).strip() not in ("", "None", "nan"):
+                st.markdown(f'<div style="color:#999;font-style:italic;font-size:0.85rem;margin-top:1rem;border-left:2px solid #c8a96e;padding-left:0.75rem">{raw_note}</div>', unsafe_allow_html=True)
 
 with tab2:
     st.subheader("Inserisci un film")
@@ -226,10 +217,10 @@ with tab4:
         motivo = st.text_input("Motivo (facoltativo)", key="manage_reason")
         k = f"film_{film_id}"
         titolo_new = st.text_input("Titolo", value=row["titolo"], key=f"{k}_titolo")
-        t_orig_val = row.get("titolo_originale") if "titolo_originale" in row and pd.notna(row.get("titolo_originale")) else ""
+        t_orig_val = str(row.get("titolo_originale") or "") if pd.notna(row.get("titolo_originale")) else ""
         titolo_orig_new = st.text_input("Titolo originale", value=t_orig_val, key=f"{k}_titolo_orig")
         anno_new = st.number_input("Anno", 1800, 2100, int(row["anno"]) if pd.notna(row["anno"]) else 2000, key=f"{k}_anno")
-        note_new = st.text_area("Note", value=row.get("note") or "", key=f"{k}_note")
+        note_new = st.text_area("Note", value=str(row.get("note") or "") if pd.notna(row.get("note")) else "", key=f"{k}_note")
         st.markdown("### Voti (0–5)")
         cA,cF = st.columns(2)
         with cA:
